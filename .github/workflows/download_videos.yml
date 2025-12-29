@@ -27,7 +27,14 @@ jobs:
         pip install yt-dlp
 
     - name: Process Videos
+      env:
+        YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
       run: |
+        if [ -n "$YOUTUBE_COOKIES" ]; then
+          echo "$YOUTUBE_COOKIES" > cookies.txt
+        else
+          echo "Warning: YOUTUBE_COOKIES secret is not set. Downloads may fail."
+        fi
         python process_videos.py
 
     - name: Commit and Push changes

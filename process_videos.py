@@ -1,12 +1,12 @@
 import os
 import json
-import yt_dlp
+import subprocess
+import sys
 from datetime import datetime
 
 VIDEOS_FILE = 'videos.txt'
 JSON_FILE = 'videos.json'
 OUTPUT_DIR = 'shorts'
-MAX_SIZE_MB = 99  # Slightly under 100MB to be safe
 
 def load_processed_videos():
     if os.path.exists(JSON_FILE):
@@ -20,8 +20,6 @@ def load_processed_videos():
 def save_processed_videos(data):
     with open(JSON_FILE, 'w') as f:
         json.dump(data, f, indent=2)
-
-import sys
 
 def get_video_urls(filename=None):
     if filename is None:
@@ -41,73 +39,109 @@ def process_videos():
     input_file = sys.argv[1] if len(sys.argv) > 1 else VIDEOS_FILE
     urls = get_video_urls(input_file)
     print(f"Reading from {input_file}...")
-    
-    # Configure yt-dlp
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': os.path.join(OUTPUT_DIR, '%(id)s.%(ext)s'),
-        'merge_output_format': 'mp4',
-        'ignoreerrors': True,
-        'no_warnings': True,
-        'quiet': False,
-    }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        for url in urls:
-            try:
-                # Extract info first to get ID
-                info = ydl.extract_info(url, download=False)
-                if not info:
+    for url in urls:
+        # Extract ID cheaply first using simple string manipulation or regex if possible
+        # But yt-dlp is safer. Let's rely on --print-json output 
+        # However, to skip already processed ones efficiently without hitting network we might want a quick check
+        # But URLs might be different forms. Let's just run yt-dlp and leverage its skipping if we wanted
+        # But we want to control the logic.
+        
+        # We'll rely on yt-dlp to tell us the ID after simulation or start.
+        # Actually, let's just run it. If we have the ID in our JSON, we might have skipped it before? 
+        # No, let's check if the file exists?
+        
+        # New approach: Run yt-dlp for each URL.
+        # Flags:
+        # -o "shorts/%(id)s.%(ext)s"
+        # --max-filesize 100M
+        # --print-json (to capture metadata)
+        # --no-simulate (actually download)
+        # --ignore-errors
+        
+        print(f"Processing {url}...")
+        
+        # Check if we already have this URL processed? 
+        # Hard to map URL to ID without calling yt-dlp.
+        # We will let yt-dlp run. 
+
+        cmd = [
+            "yt-dlp",
+            url,
+            "-o", f"{OUTPUT_DIR}/%(id)s.%(ext)s",
+            "--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "--max-filesize", "100M",
+            "--recode-video", "mp4",
+            "--print-json",
+            "--no-simulate",
+            "--no-warnings"
+        ]
+        
+        try:
+            # Capture output
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            # Check for max-filesize abort
+            if result.returncode != 0:
+                if "File is larger than" in result.stderr:
+                    print(f"Skipped {url}: File larger than 100MB")
+                else:
+                    print(f"Error downloading {url}: {result.stderr.splitlines()[-1] if result.stderr else 'Unknown error'}")
+                continue
+
+            # Parse JSON output
+            # yt-dlp --print-json outputs the JSON on one line, but video might be downloaded.
+            # Sometimes it prints the JSON even if it downloads.
+            
+            output_json = None
+            for line in result.stdout.splitlines():
+                try:
+                    data = json.loads(line)
+                    if 'id' in data and 'title' in data:
+                        output_json = data
+                        break
+                except json.JSONDecodeError:
                     continue
-                
-                video_id = info['id']
-                
-                if video_id in processed_ids:
-                    print(f"Skipping {video_id} (already processed)")
-                    continue
+            
+            if not output_json:
+                print(f"Could not extract metadata for {url}")
+                continue
 
-                print(f"Processing {video_id}...")
-                
-                # Download
-                info = ydl.extract_info(url, download=True)
-                
-                # Get the final filename
-                # Note: ydl.prepare_filename(info) might not be accurate if merging happened or extension changed
-                # So we verify strictly.
-                expected_filename = os.path.join(OUTPUT_DIR, f"{video_id}.mp4")
-                
-                if not os.path.exists(expected_filename):
-                    print(f"File not found after download: {expected_filename}")
-                    continue
+            video_id = output_json['id']
+            
+            if video_id in processed_ids:
+                print(f"Already tracked {video_id}. Updating metadata if needed.")
+                continue
 
-                file_size = os.path.getsize(expected_filename)
-                file_size_mb = file_size / (1024 * 1024)
+            expected_filename = os.path.join(OUTPUT_DIR, f"{video_id}.mp4")
+            
+            if not os.path.exists(expected_filename):
+                print(f"File not found: {expected_filename} (maybe skipped or failed silently?)")
+                continue
 
-                if file_size_mb > MAX_SIZE_MB:
-                    print(f"File {video_id}.mp4 is too large ({file_size_mb:.2f}MB). Deleting...")
-                    os.remove(expected_filename)
-                    continue
+            file_size = os.path.getsize(expected_filename)
 
-                # Prepare metadata
-                video_data = {
-                    'id': video_id,
-                    'title': info.get('title'),
-                    'description': info.get('description'),
-                    'poster_url': info.get('thumbnail'),
-                    'webpage_url': info.get('webpage_url'),
-                    'local_path': expected_filename,
-                    'file_size': file_size,
-                    'uploaded': False,
-                    'downloaded_at': datetime.now().isoformat()
-                }
+            # Metadata
+            video_data = {
+                'id': video_id,
+                'title': output_json.get('title'),
+                'description': output_json.get('description'),
+                'poster_url': output_json.get('thumbnail'),
+                'webpage_url': output_json.get('webpage_url'),
+                'local_path': expected_filename,
+                'file_size': file_size,
+                'uploaded': False,
+                'downloaded_at': datetime.now().isoformat()
+            }
+            
+            processed_data.append(video_data)
+            save_processed_videos(processed_data)
+            processed_ids.add(video_id)
+            print(f"Success: {video_id}")
 
-                processed_data.append(video_data)
-                save_processed_videos(processed_data)
-                processed_ids.add(video_id)
-                print(f"Successfully processed {video_id}")
-
-            except Exception as e:
-                print(f"Error processing {url}: {str(e)}")
+        except Exception as e:
+            print(f"Exception processing {url}: {e}")
 
 if __name__ == "__main__":
     process_videos()

@@ -137,6 +137,7 @@ def process_videos():
                 'description': output_json.get('description'),
                 'poster_url': output_json.get('thumbnail'),
                 'webpage_url': output_json.get('webpage_url'),
+                'tags': output_json.get('tags'),
                 'local_path': expected_filename,
                 'file_size': file_size,
                 'uploaded': False,

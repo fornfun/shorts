@@ -30,7 +30,7 @@ jobs:
 
     - name: Process Videos
       env:
-        YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        PYTHONUNBUFFERED: 1
       run: |
         if [ -n "$YOUTUBE_COOKIES" ]; then
           echo "$YOUTUBE_COOKIES" > cookies.txt

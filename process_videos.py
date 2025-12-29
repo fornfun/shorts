@@ -38,7 +38,7 @@ def process_videos():
     
     input_file = sys.argv[1] if len(sys.argv) > 1 else VIDEOS_FILE
     urls = get_video_urls(input_file)
-    print(f"Reading from {input_file}...")
+    print(f"Reading from {input_file}...", flush=True)
 
     for url in urls:
         # Extract ID cheaply first using simple string manipulation or regex if possible
@@ -59,7 +59,7 @@ def process_videos():
         # --no-simulate (actually download)
         # --ignore-errors
         
-        print(f"Processing {url}...")
+        print(f"Processing {url}...", flush=True)
         
         # Check if we already have this URL processed? 
         # Hard to map URL to ID without calling yt-dlp.

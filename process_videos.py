@@ -75,7 +75,8 @@ def process_videos():
             "--recode-video", "mp4",
             "--print-json",
             "--no-simulate",
-            "--no-warnings"
+            "--no-warnings",
+            "--extractor-args", "youtube:player_client=android,web"
         ]
 
         if os.path.exists("www.youtube.com_cookies.txt"):

@@ -77,6 +77,13 @@ def process_videos():
             "--no-simulate",
             "--no-warnings"
         ]
+
+        if os.path.exists("www.youtube.com_cookies.txt"):
+            print("Using cookies from www.youtube.com_cookies.txt")
+            cmd.extend(["--cookies", "www.youtube.com_cookies.txt"])
+        elif os.path.exists("cookies.txt"):
+            print("Using cookies from cookies.txt")
+            cmd.extend(["--cookies", "cookies.txt"])
         
         try:
             # Capture output
